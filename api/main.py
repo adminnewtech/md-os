@@ -57,6 +57,12 @@ from .models import (
     ApiCredentialCreate,
     WebhookConfigCreate,
     ApiLogCreate,
+    # HR
+    EmployeeCreate,
+    RecruitmentPipelineCreate,
+    # Logistics
+    VehicleCreate,
+    ShipmentCreate,
 )
 from .security import approval_required, require_permission
 from .services import (
@@ -125,6 +131,26 @@ from .services import (
     log_api_call,
     list_api_logs,
     get_connector_health,
+    # HR services
+    create_employee,
+    get_employee,
+    list_employees,
+    update_employee,
+    create_recruitment,
+    get_recruitment,
+    list_recruitments,
+    update_recruitment,
+    get_hr_summary,
+    # Logistics services
+    create_vehicle,
+    get_vehicle,
+    list_vehicles,
+    update_vehicle_status,
+    create_shipment,
+    get_shipment,
+    list_shipments,
+    update_shipment_status,
+    get_logistics_summary,
 )
 from .orchestrator import create_cycle, get_cycle, list_cycles, run_cycle
 from .reporting import generate_agent_periodic_report, generate_ceo_daily_report
@@ -1601,3 +1627,234 @@ def list_integration_logs_api(
 def connector_health_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
     require_permission(ctx.model_dump(), "integrations:read")
     return get_connector_health(ctx.company_id)
+
+# ── HR Routes ────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/hr/employees", status_code=201)
+def create_employee_api(
+    payload: EmployeeCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_employee(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "employee", item["id"], None, item)
+    return item
+
+
+@app.get("/api/hr/employees")
+def list_employees_api(
+    status: str | None = None,
+    department: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return list_employees(ctx.company_id, status=status, department=department)
+
+
+@app.get("/api/hr/employees/{emp_id}")
+def get_employee_api(
+    emp_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    item = get_employee(emp_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="employee not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/hr/employees/{emp_id}")
+def update_employee_api(
+    emp_id: str,
+    status: str | None = None,
+    department: str | None = None,
+    role: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    item = get_employee(emp_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="employee not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_employee(emp_id, {k: v for k, v in {"status": status, "department": department, "role": role}.items() if v is not None})
+    log_audit(item["company_id"], ctx.actor_id, "update", "employee", emp_id, before, updated)
+    return updated
+
+
+@app.get("/api/hr/summary")
+def hr_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return get_hr_summary(ctx.company_id)
+
+
+# ── Recruitment Routes ─────────────────────────────────────────────────────
+
+@app.post("/api/hr/recruitment", status_code=201)
+def create_recruitment_api(
+    payload: RecruitmentPipelineCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_recruitment(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "recruitment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/hr/recruitment")
+def list_recruitment_api(
+    stage: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return list_recruitments(ctx.company_id, stage=stage)
+
+
+@app.get("/api/hr/recruitment/{rec_id}")
+def get_recruitment_api(
+    rec_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    item = get_recruitment(rec_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/hr/recruitment/{rec_id}/stage")
+def promote_recruitment_api(
+    rec_id: str,
+    stage: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    item = get_recruitment(rec_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_recruitment(rec_id, stage)
+    log_audit(item["company_id"], ctx.actor_id, "update", "recruitment", rec_id, before, updated)
+    return updated
+
+
+# ── Logistics Routes ───────────────────────────────────────────────────────
+
+@app.post("/api/logistics/vehicles", status_code=201)
+def create_vehicle_api(
+    payload: VehicleCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_vehicle(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "vehicle", item["id"], None, item)
+    return item
+
+
+@app.get("/api/logistics/vehicles")
+def list_vehicles_api(
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return list_vehicles(ctx.company_id, status=status)
+
+
+@app.get("/api/logistics/vehicles/{veh_id}")
+def get_vehicle_api(
+    veh_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    item = get_vehicle(veh_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/logistics/vehicles/{veh_id}/status")
+def update_vehicle_status_api(
+    veh_id: str,
+    status: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    item = get_vehicle(veh_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_vehicle_status(veh_id, status)
+    log_audit(item["company_id"], ctx.actor_id, "update", "vehicle", veh_id, before, updated)
+    return updated
+
+
+@app.post("/api/logistics/shipments", status_code=201)
+def create_shipment_api(
+    payload: ShipmentCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_shipment(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "shipment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/logistics/shipments")
+def list_shipments_api(
+    status: str | None = None,
+    vehicle_id: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return list_shipments(ctx.company_id, status=status, vehicle_id=vehicle_id)
+
+
+@app.get("/api/logistics/shipments/{ship_id}")
+def get_shipment_api(
+    ship_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    item = get_shipment(ship_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="shipment not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/logistics/shipments/{ship_id}/status")
+def update_shipment_status_api(
+    ship_id: str,
+    status: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    item = get_shipment(ship_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="shipment not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    from datetime import datetime, timezone
+    delivered = datetime.now(timezone.utc).isoformat() if status == "delivered" else None
+    updated = update_shipment_status(ship_id, status, delivered_at=delivered)
+    log_audit(item["company_id"], ctx.actor_id, "update", "shipment", ship_id, before, updated)
+    return updated
+
+
+@app.get("/api/logistics/summary")
+def logistics_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return get_logistics_summary(ctx.company_id)

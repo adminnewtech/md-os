@@ -33,6 +33,10 @@ class InMemoryStore:
         self.api_credentials: dict[str, dict[str, Any]] = {}
         self.webhook_configs: dict[str, dict[str, Any]] = {}
         self.api_logs: list[dict[str, Any]] = []
+        self.employees: dict[str, dict[str, Any]] = {}
+        self.recruitment_pipeline: dict[str, dict[str, Any]] = {}
+        self.vehicles: dict[str, dict[str, Any]] = {}
+        self.shipments: dict[str, dict[str, Any]] = {}
 
     def reset(self) -> None:
         self.companies.clear()
@@ -62,6 +66,10 @@ class InMemoryStore:
         self.api_credentials.clear()
         self.webhook_configs.clear()
         self.api_logs.clear()
+        self.employees.clear()
+        self.recruitment_pipeline.clear()
+        self.vehicles.clear()
+        self.shipments.clear()
 
     def bucket(self, name: str) -> MutableMapping[str, dict[str, Any]]:
         return getattr(self, name)

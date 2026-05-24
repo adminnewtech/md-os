@@ -476,3 +476,75 @@ class ApiLogCreate(ApiModel):
 class ApiLog(ApiLogCreate):
     id: str = Field(default_factory=lambda: str(uuid4()))
     timestamp: str | None = None
+
+
+# ── HR / Recruitment Models ───────────────────────────────────────────────────
+
+class EmployeeCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    first_name: str
+    last_name: str
+    email: str
+    phone: str | None = None
+    department: str | None = None
+    role: str | None = None
+    hire_date: str | None = None
+    status: Literal["active", "inactive", "onboarding", "offboarded"] = "active"
+
+
+class Employee(EmployeeCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class RecruitmentPipelineCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    candidate_name: str
+    email: str
+    position: str
+    stage: Literal["applied", "screening", "interview", "offer", "hired", "rejected"] = "applied"
+    source: str | None = None
+    notes: str | None = None
+
+
+class RecruitmentPipeline(RecruitmentPipelineCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+# ── Logistics Models ─────────────────────────────────────────────────────────
+
+class VehicleCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    plate_number: str
+    vehicle_type: str | None = None
+    capacity_kg: float = 0.0
+    driver_name: str | None = None
+    status: Literal["available", "in_use", "maintenance", "retired"] = "available"
+
+
+class Vehicle(VehicleCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class ShipmentCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    tracking_number: str
+    vehicle_id: str | None = None
+    origin: str
+    destination: str
+    status: Literal["pending", "in_transit", "delivered", "cancelled"] = "pending"
+    estimated_delivery: str | None = None
+    actual_delivery: str | None = None
+    notes: str | None = None
+
+
+class Shipment(ShipmentCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None

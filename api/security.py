@@ -30,6 +30,10 @@ ROLE_PERMISSIONS = {
         "inventory:write",
         "integrations:read",
         "integrations:write",
+        "hr:read",
+        "hr:write",
+        "logistics:read",
+        "logistics:write",
     },
     "viewer": {
         "companies:read",

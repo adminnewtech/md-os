@@ -13,6 +13,8 @@ try:
         Invoice, Payment,
         SKU, StockMovement,
         ApiCredential, WebhookConfig, ApiLog,
+        Employee, RecruitmentPipeline,
+        Vehicle, Shipment,
     )
     from store import store
 except ImportError:
@@ -24,6 +26,8 @@ except ImportError:
         Invoice, Payment,
         SKU, StockMovement,
         ApiCredential, WebhookConfig, ApiLog,
+        Employee, RecruitmentPipeline,
+        Vehicle, Shipment,
     )
     from .store import store
 
@@ -717,4 +721,156 @@ def get_connector_health(company_id: str) -> dict[str, Any]:
         "providers": list(set(c.get("provider", "unknown") for c in active)),
         "recent_log_count": len(logs[-100:]),
         "recent_failure_count": len(recent_failures),
+    }
+
+
+# ── HR Services ───────────────────────────────────────────────────────────────────
+
+def create_employee(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Employee(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.employees[item["id"]] = item
+    return item
+
+
+def get_employee(emp_id: str) -> dict[str, Any] | None:
+    return store.employees.get(emp_id)
+
+
+def list_employees(company_id: str, status: str | None = None, department: str | None = None) -> list[dict[str, Any]]:
+    emps = [e for e in store.employees.values() if e.get("company_id") == company_id]
+    if status:
+        emps = [e for e in emps if e.get("status") == status]
+    if department:
+        emps = [e for e in emps if e.get("department") == department]
+    return emps
+
+
+def update_employee(emp_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    emp = store.employees.get(emp_id)
+    if emp is None:
+        return None
+    for k, v in payload.items():
+        if v is not None:
+            emp[k] = v
+    from datetime import datetime, timezone
+    emp["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return emp
+
+
+def create_recruitment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = RecruitmentPipeline(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.recruitment_pipeline[item["id"]] = item
+    return item
+
+
+def get_recruitment(rec_id: str) -> dict[str, Any] | None:
+    return store.recruitment_pipeline.get(rec_id)
+
+
+def list_recruitments(company_id: str, stage: str | None = None) -> list[dict[str, Any]]:
+    recs = [r for r in store.recruitment_pipeline.values() if r.get("company_id") == company_id]
+    if stage:
+        recs = [r for r in recs if r.get("stage") == stage]
+    return recs
+
+
+def update_recruitment(rec_id: str, stage: str) -> dict[str, Any] | None:
+    rec = store.recruitment_pipeline.get(rec_id)
+    if rec is None:
+        return None
+    rec["stage"] = stage
+    return rec
+
+
+# ── Logistics Services ───────────────────────────────────────────────────────────
+
+def create_vehicle(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Vehicle(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.vehicles[item["id"]] = item
+    return item
+
+
+def get_vehicle(veh_id: str) -> dict[str, Any] | None:
+    return store.vehicles.get(veh_id)
+
+
+def list_vehicles(company_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    vehs = [v for v in store.vehicles.values() if v.get("company_id") == company_id]
+    if status:
+        vehs = [v for v in vehs if v.get("status") == status]
+    return vehs
+
+
+def update_vehicle_status(veh_id: str, status: str) -> dict[str, Any] | None:
+    veh = store.vehicles.get(veh_id)
+    if veh is None:
+        return None
+    veh["status"] = status
+    return veh
+
+
+def create_shipment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Shipment(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.shipments[item["id"]] = item
+    return item
+
+
+def get_shipment(ship_id: str) -> dict[str, Any] | None:
+    return store.shipments.get(ship_id)
+
+
+def list_shipments(company_id: str, status: str | None = None, vehicle_id: str | None = None) -> list[dict[str, Any]]:
+    ships = [s for s in store.shipments.values() if s.get("company_id") == company_id]
+    if status:
+        ships = [s for s in ships if s.get("status") == status]
+    if vehicle_id:
+        ships = [s for s in ships if s.get("vehicle_id") == vehicle_id]
+    return ships
+
+
+def update_shipment_status(ship_id: str, status: str, delivered_at: str | None = None) -> dict[str, Any] | None:
+    ship = store.shipments.get(ship_id)
+    if ship is None:
+        return None
+    ship["status"] = status
+    if status == "delivered" and delivered_at:
+        ship["actual_delivery"] = delivered_at
+    return ship
+
+
+def get_logistics_summary(company_id: str) -> dict[str, Any]:
+    vehicles = list_vehicles(company_id)
+    available = [v for v in vehicles if v.get("status") == "available"]
+    in_use = [v for v in vehicles if v.get("status") == "in_use"]
+    shipments = list_shipments(company_id)
+    in_transit = [s for s in shipments if s.get("status") == "in_transit"]
+    return {
+        "company_id": company_id,
+        "total_vehicles": len(vehicles),
+        "available_vehicles": len(available),
+        "vehicles_in_use": len(in_use),
+        "total_shipments": len(shipments),
+        "shipments_in_transit": len(in_transit),
+    }
+
+
+def get_hr_summary(company_id: str) -> dict[str, Any]:
+    employees = list_employees(company_id)
+    active = [e for e in employees if e.get("status") == "active"]
+    recruiting = list_recruitments(company_id)
+    open_positions = [r for r in recruiting if r.get("stage") in ("applied", "screening", "interview")]
+    return {
+        "company_id": company_id,
+        "total_employees": len(employees),
+        "active_employees": len(active),
+        "recruiting_candidates": len(recruiting),
+        "open_positions": len(open_positions),
     }
