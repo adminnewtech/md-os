@@ -337,3 +337,214 @@ class CustomerHealthCreate(ApiModel):
 class CustomerHealth(CustomerHealthCreate):
     id: str = Field(default_factory=lambda: str(uuid4()))
     updated_at: str | None = None
+
+
+# ── Finance Models ────────────────────────────────────────────────────────────────
+
+InvoiceStatus = Literal["draft", "sent", "paid", "overdue", "cancelled"]
+
+
+class LineItemCreate(ApiModel):
+    description: str
+    quantity: float = 1.0
+    unit_price: float = 0.0
+    total: float = 0.0
+
+
+class LineItem(LineItemCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+
+
+class InvoiceCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    invoice_number: str = ""
+    customer_id: str
+    customer_name: str | None = None
+    total_amount: float = 0.0
+    currency: str = "USD"
+    status: InvoiceStatus = "draft"
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+    due_date: str | None = None
+    notes: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class Invoice(InvoiceCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    paid_amount: float = 0.0
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class PaymentCreate(ApiModel):
+    company_id: str
+    invoice_id: str
+    amount: float
+    method: str = "bank_transfer"
+    reference: str | None = None
+    notes: str | None = None
+
+
+class Payment(PaymentCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+# ── Inventory Models ─────────────────────────────────────────────────────────────
+
+class SKUCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    sku_code: str = ""
+    name: str
+    description: str | None = None
+    category: str | None = None
+    quantity_on_hand: float = 0.0
+    unit: str = "unit"
+    reorder_point: float = 0.0
+    reorder_quantity: float = 0.0
+    unit_cost: float = 0.0
+    status: Literal["active", "inactive", "discontinued"] = "active"
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class SKU(SKUCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    updated_at: str | None = None
+
+
+class StockMovementCreate(ApiModel):
+    company_id: str
+    sku_id: str
+    movement_type: Literal["in", "out", "adjustment"]
+    quantity: float
+    reason: str | None = None
+    reference: str | None = None
+
+
+class StockMovement(StockMovementCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+# ── API Connector Hub Models ──────────────────────────────────────────────────
+
+class ApiCredentialCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    provider: str  # telegram, github, zoho, stripe, paperclip, custom
+    auth_type: Literal["api_key", "oauth2", "bearer_token", "basic"] = "api_key"
+    credentials: dict[str, Any] = Field(default_factory=dict)  # store encrypted
+    base_url: str | None = None
+    is_active: bool = True
+
+
+class ApiCredential(ApiCredentialCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class WebhookConfigCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    target_url: str
+    events: list[str] = Field(default_factory=list)
+    secret: str | None = None
+    is_active: bool = True
+
+
+class WebhookConfig(WebhookConfigCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class ApiLogCreate(ApiModel):
+    company_id: str
+    connector_id: str
+    direction: Literal["incoming", "outgoing"]
+    method: str
+    endpoint: str
+    status_code: int
+    duration_ms: int
+    request_body: str | None = None
+    response_body: str | None = None
+
+
+class ApiLog(ApiLogCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    timestamp: str | None = None
+
+
+# ── HR / Recruitment Models ───────────────────────────────────────────────────
+
+class EmployeeCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    first_name: str
+    last_name: str
+    email: str
+    phone: str | None = None
+    department: str | None = None
+    role: str | None = None
+    hire_date: str | None = None
+    status: Literal["active", "inactive", "onboarding", "offboarded"] = "active"
+
+
+class Employee(EmployeeCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class RecruitmentPipelineCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    candidate_name: str
+    email: str
+    position: str
+    stage: Literal["applied", "screening", "interview", "offer", "hired", "rejected"] = "applied"
+    source: str | None = None
+    notes: str | None = None
+
+
+class RecruitmentPipeline(RecruitmentPipelineCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+# ── Logistics Models ─────────────────────────────────────────────────────────
+
+class VehicleCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    plate_number: str
+    vehicle_type: str | None = None
+    capacity_kg: float = 0.0
+    driver_name: str | None = None
+    status: Literal["available", "in_use", "maintenance", "retired"] = "available"
+
+
+class Vehicle(VehicleCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class ShipmentCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    tracking_number: str
+    vehicle_id: str | None = None
+    origin: str
+    destination: str
+    status: Literal["pending", "in_transit", "delivered", "cancelled"] = "pending"
+    estimated_delivery: str | None = None
+    actual_delivery: str | None = None
+    notes: str | None = None
+
+
+class Shipment(ShipmentCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
