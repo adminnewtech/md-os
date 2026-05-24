@@ -70,6 +70,13 @@ from .models import (
     # Logistics
     VehicleCreate,
     ShipmentCreate,
+    # Sales
+    Quote,
+    QuoteCreate,
+    Proposal,
+    ProposalCreate,
+    DealDesk,
+    DealDeskCreate,
 )
 from .security import approval_required, require_permission
 from .services import (
@@ -158,6 +165,20 @@ from .services import (
     list_shipments,
     update_shipment_status,
     get_logistics_summary,
+    # Sales services
+    create_quote,
+    get_quote,
+    list_quotes,
+    update_quote,
+    create_proposal,
+    get_proposal,
+    list_proposals,
+    update_proposal,
+    create_deal_desk,
+    get_deal_desk,
+    list_deal_desks,
+    update_deal_desk,
+    get_sales_summary,
 )
 from .orchestrator import create_cycle, get_cycle, list_cycles, run_cycle
 from .reporting import generate_agent_periodic_report, generate_ceo_daily_report
@@ -1907,3 +1928,167 @@ def update_shipment_status_api(
 def logistics_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
     require_permission(ctx.model_dump(), "logistics:read")
     return get_logistics_summary(ctx.company_id)
+
+
+# ── Sales API ───────────────────────────────────────────────────────────────────
+
+@app.post("/api/sales/quotes", status_code=201)
+def create_quote_api(
+    payload: QuoteCreate,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_quote(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "quote", item["id"], None, item)
+    return item
+
+
+@app.get("/api/sales/quotes")
+def list_quotes_api(
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "sales:read")
+    return list_quotes(ctx.company_id, status=status)
+
+
+@app.get("/api/sales/quotes/{quote_id}")
+def get_quote_api(
+    quote_id: str,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:read")
+    item = get_quote(quote_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="quote not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/sales/quotes/{quote_id}")
+def update_quote_api(
+    quote_id: str,
+    payload: Quote,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    item = get_quote(quote_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="quote not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = dict(item)
+    updated = update_quote(quote_id, payload.model_dump())
+    log_audit(item["company_id"], ctx.actor_id, "update", "quote", quote_id, before, updated)
+    return updated
+
+
+@app.post("/api/sales/proposals", status_code=201)
+def create_proposal_api(
+    payload: ProposalCreate,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_proposal(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "proposal", item["id"], None, item)
+    return item
+
+
+@app.get("/api/sales/proposals")
+def list_proposals_api(
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "sales:read")
+    return list_proposals(ctx.company_id, status=status)
+
+
+@app.get("/api/sales/proposals/{proposal_id}")
+def get_proposal_api(
+    proposal_id: str,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:read")
+    item = get_proposal(proposal_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="proposal not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/sales/proposals/{proposal_id}")
+def update_proposal_api(
+    proposal_id: str,
+    payload: Proposal,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    item = get_proposal(proposal_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="proposal not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = dict(item)
+    updated = update_proposal(proposal_id, payload.model_dump())
+    log_audit(item["company_id"], ctx.actor_id, "update", "proposal", proposal_id, before, updated)
+    return updated
+
+
+@app.post("/api/sales/deal-desks", status_code=201)
+def create_deal_desk_api(
+    payload: DealDeskCreate,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_deal_desk(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "deal_desk", item["id"], None, item)
+    return item
+
+
+@app.get("/api/sales/deal-desks")
+def list_deal_desks_api(
+    stage: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "sales:read")
+    return list_deal_desks(ctx.company_id, stage=stage)
+
+
+@app.get("/api/sales/deal-desks/{deal_id}")
+def get_deal_desk_api(
+    deal_id: str,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:read")
+    item = get_deal_desk(deal_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="deal desk not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/sales/deal-desks/{deal_id}")
+def update_deal_desk_api(
+    deal_id: str,
+    payload: DealDesk,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:write")
+    item = get_deal_desk(deal_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="deal desk not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = dict(item)
+    updated = update_deal_desk(deal_id, payload.model_dump())
+    log_audit(item["company_id"], ctx.actor_id, "update", "deal_desk", deal_id, before, updated)
+    return updated
+
+
+@app.get("/api/sales/summary")
+def sales_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "sales:read")
+    return get_sales_summary(ctx.company_id)

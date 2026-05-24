@@ -15,6 +15,7 @@ try:
         ApiCredential, WebhookConfig, ApiLog,
         Employee, RecruitmentPipeline,
         Vehicle, Shipment,
+        Quote, Proposal, DealDesk,
     )
     from store import store
 except ImportError:
@@ -28,6 +29,7 @@ except ImportError:
         ApiCredential, WebhookConfig, ApiLog,
         Employee, RecruitmentPipeline,
         Vehicle, Shipment,
+        Quote, Proposal, DealDesk,
     )
     from .store import store
 
@@ -873,4 +875,141 @@ def get_hr_summary(company_id: str) -> dict[str, Any]:
         "active_employees": len(active),
         "recruiting_candidates": len(recruiting),
         "open_positions": len(open_positions),
+    }
+
+
+# ── Sales Services ──────────────────────────────────────────────────────────────
+
+def create_quote(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Quote(**payload).model_dump()
+    # Calculate totals from line items
+    subtotal = sum(itm.get("quantity", 1) * itm.get("unit_price", 0) * (1 - itm.get("discount_pct", 0) / 100) for itm in item.get("items", []))
+    item["subtotal"] = subtotal
+    item["total"] = subtotal * (1 - item.get("discount_pct", 0) / 100)
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    item["updated_at"] = item["created_at"]
+    store.quotes[item["id"]] = item
+    return item
+
+
+def get_quote(quote_id: str) -> dict[str, Any] | None:
+    return store.quotes.get(quote_id)
+
+
+def list_quotes(company_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    qs = [q for q in store.quotes.values() if q.get("company_id") == company_id]
+    if status:
+        qs = [q for q in qs if q.get("status") == status]
+    return qs
+
+
+def update_quote(quote_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    quote = store.quotes.get(quote_id)
+    if quote is None:
+        return None
+    for k, v in payload.items():
+        if v is not None:
+            quote[k] = v
+    # Recalculate totals if items changed
+    subtotal = sum(itm.get("quantity", 1) * itm.get("unit_price", 0) * (1 - itm.get("discount_pct", 0) / 100) for itm in quote.get("items", []))
+    quote["subtotal"] = subtotal
+    quote["total"] = subtotal * (1 - quote.get("discount_pct", 0) / 100)
+    from datetime import datetime, timezone
+    quote["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return quote
+
+
+def create_proposal(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Proposal(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    item["updated_at"] = item["created_at"]
+    store.proposals[item["id"]] = item
+    # Link to quote if exists
+    if item.get("quote_id"):
+        quote = store.quotes.get(item["quote_id"])
+        if quote:
+            quote["status"] = "converted"
+            quote["converted_to_proposal_id"] = item["id"]
+            quote["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return item
+
+
+def get_proposal(proposal_id: str) -> dict[str, Any] | None:
+    return store.proposals.get(proposal_id)
+
+
+def list_proposals(company_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    ps = [p for p in store.proposals.values() if p.get("company_id") == company_id]
+    if status:
+        ps = [p for p in ps if p.get("status") == status]
+    return ps
+
+
+def update_proposal(proposal_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    prop = store.proposals.get(proposal_id)
+    if prop is None:
+        return None
+    for k, v in payload.items():
+        if v is not None:
+            prop[k] = v
+    from datetime import datetime, timezone
+    prop["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return prop
+
+
+def create_deal_desk(payload: dict[str, Any]) -> dict[str, Any]:
+    item = DealDesk(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    item["updated_at"] = item["created_at"]
+    store.deal_desks[item["id"]] = item
+    return item
+
+
+def get_deal_desk(deal_id: str) -> dict[str, Any] | None:
+    return store.deal_desks.get(deal_id)
+
+
+def list_deal_desks(company_id: str, stage: str | None = None) -> list[dict[str, Any]]:
+    ds = [d for d in store.deal_desks.values() if d.get("company_id") == company_id]
+    if stage:
+        ds = [d for d in ds if d.get("stage") == stage]
+    return ds
+
+
+def update_deal_desk(deal_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    deal = store.deal_desks.get(deal_id)
+    if deal is None:
+        return None
+    for k, v in payload.items():
+        if v is not None:
+            deal[k] = v
+    from datetime import datetime, timezone
+    deal["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return deal
+
+
+def get_sales_summary(company_id: str) -> dict[str, Any]:
+    quotes = list_quotes(company_id)
+    proposals = list_proposals(company_id)
+    deals = list_deal_desks(company_id)
+    open_quotes = [q for q in quotes if q.get("status") in ("draft", "sent")]
+    converted_quotes = [q for q in quotes if q.get("status") == "converted"]
+    won_deals = [d for d in deals if d.get("stage") == "closed_won"]
+    lost_deals = [d for d in deals if d.get("stage") == "closed_lost"]
+    pending = [d for d in deals if d.get("stage") == "pending_approval"]
+    return {
+        "company_id": company_id,
+        "total_quotes": len(quotes),
+        "open_quotes": len(open_quotes),
+        "converted_quotes": len(converted_quotes),
+        "total_proposals": len(proposals),
+        "total_deals": len(deals),
+        "won_deals": len(won_deals),
+        "lost_deals": len(lost_deals),
+        "pending_approval": len(pending),
+        "pipeline_value": sum(d.get("total_amount", 0) for d in deals if d.get("stage") not in ("closed_won", "closed_lost")),
+        "won_value": sum(d.get("total_amount", 0) for d in won_deals),
     }

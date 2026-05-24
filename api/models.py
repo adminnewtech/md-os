@@ -548,3 +548,91 @@ class ShipmentCreate(ApiModel):
 class Shipment(ShipmentCreate):
     id: str = Field(default_factory=lambda: str(uuid4()))
     created_at: str | None = None
+
+
+# ── Sales Models ──────────────────────────────────────────────────────────────
+
+class QuoteLineItemCreate(ApiModel):
+    description: str
+    quantity: float = 1.0
+    unit_price: float = 0.0
+    discount_pct: float = 0.0
+
+    @property
+    def subtotal(self) -> float:
+        return self.quantity * self.unit_price * (1 - self.discount_pct / 100)
+
+
+class QuoteLineItem(QuoteLineItemCreate):
+    pass
+
+
+class QuoteCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    quote_number: str
+    customer_name: str
+    customer_email: str | None = None
+    customer_phone: str | None = None
+    valid_until: str | None = None
+    status: Literal["draft", "sent", "accepted", "rejected", "expired", "converted"] = "draft"
+    items: list[QuoteLineItemCreate] = Field(default_factory=list)
+    discount_pct: float = 0.0
+    notes: str | None = None
+    created_by_agent_id: str | None = None
+    converted_to_proposal_id: str | None = None
+
+
+class Quote(QuoteCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ProposalSectionCreate(ApiModel):
+    heading: str
+    body: str
+
+
+class ProposalCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    proposal_number: str
+    quote_id: str | None = None
+    customer_name: str
+    customer_email: str | None = None
+    title: str
+    status: Literal["draft", "sent", "under_review", "approved", "rejected", "signed"] = "draft"
+    total_amount: float = 0.0
+    sections: list[ProposalSectionCreate] = Field(default_factory=list)
+    valid_until: str | None = None
+    signed_by: str | None = None
+    signed_at: str | None = None
+    notes: str | None = None
+    created_by_agent_id: str | None = None
+
+
+class Proposal(ProposalCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class DealDeskCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    title: str
+    description: str | None = None
+    quote_id: str | None = None
+    proposal_id: str | None = None
+    customer_name: str
+    total_amount: float = 0.0
+    stage: Literal["initiated", "negotiation", "pending_approval", "approved", "rejected", "closed_won", "closed_lost"] = "initiated"
+    owner_agent_id: str | None = None
+    notes: str | None = None
+
+
+class DealDesk(DealDeskCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+    updated_at: str | None = None
