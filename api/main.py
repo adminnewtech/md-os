@@ -7,9 +7,16 @@ from pydantic import BaseModel, Field
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .bootstrap import bootstrap_seed_data
+from .stack_orchestrator import (
+    get_full_status,
+    is_stack_healthy,
+    codegraph_analyze,
+    multica_agent_snapshot,
+)
+from .bootstrap import bootstrap_full
 from .auth import AuthContext, create_access_token, get_auth_context
 from .db import init_db
 from .models import (
@@ -47,6 +54,22 @@ from .models import (
     TicketCreate,
     TicketUpdate,
     MacroCreate,
+    # Finance
+    InvoiceCreate,
+    PaymentCreate,
+    # Inventory
+    SKUCreate,
+    StockMovementCreate,
+    # Integrations
+    ApiCredentialCreate,
+    WebhookConfigCreate,
+    ApiLogCreate,
+    # HR
+    EmployeeCreate,
+    RecruitmentPipelineCreate,
+    # Logistics
+    VehicleCreate,
+    ShipmentCreate,
 )
 from .security import approval_required, require_permission
 from .services import (
@@ -88,6 +111,53 @@ from .services import (
     update_customer_health,
     get_customer_health,
     get_support_summary,
+    # Finance services
+    create_invoice,
+    get_invoice,
+    update_invoice,
+    list_invoices,
+    get_invoices_aging_summary,
+    create_payment,
+    list_payments_for_invoice,
+    # Inventory services
+    create_sku,
+    get_sku,
+    update_sku,
+    list_skus,
+    create_stock_movement,
+    get_inventory_summary,
+    # Integration services
+    create_api_credential,
+    get_api_credential,
+    list_api_credentials,
+    delete_api_credential,
+    create_webhook_config,
+    get_webhook_config,
+    list_webhook_configs,
+    delete_webhook_config,
+    log_api_call,
+    list_api_logs,
+    get_connector_health,
+    # HR services
+    create_employee,
+    get_employee,
+    list_employees,
+    update_employee,
+    create_recruitment,
+    get_recruitment,
+    list_recruitments,
+    update_recruitment,
+    get_hr_summary,
+    # Logistics services
+    create_vehicle,
+    get_vehicle,
+    list_vehicles,
+    update_vehicle_status,
+    create_shipment,
+    get_shipment,
+    list_shipments,
+    update_shipment_status,
+    get_logistics_summary,
 )
 from .orchestrator import create_cycle, get_cycle, list_cycles, run_cycle
 from .reporting import generate_agent_periodic_report, generate_ceo_daily_report
@@ -98,13 +168,20 @@ from .store import store
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_info = init_db()
-    bootstrap_seed_data()
+    bootstrap_full()
     app.state.db = db_info
     yield
 
 
 app = FastAPI(title="MD-OS API", version="0.1.0", lifespan=lifespan)
-bootstrap_seed_data()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://.*\.83-171-249-32\.nip\.io",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+bootstrap_full()
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -151,6 +228,41 @@ def _create(bucket: str, entity: str, model: T, ctx: AuthContext, permission: st
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="md-os-api")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stack Orchestrator Endpoints — full integration layer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/stack/status")
+def stack_status() -> dict[str, Any]:
+    """Full stack health + metrics from all 6 tools."""
+    return get_full_status()
+
+
+@app.get("/api/stack/health")
+def stack_health_simple() -> dict[str, Any]:
+    """Simple health check → True/False for monitoring."""
+    healthy = is_stack_healthy()
+    return {"healthy": healthy, "status": "ok" if healthy else "degraded"}
+
+
+@app.post("/api/stack/analyze")
+def stack_analyze(
+    repo_path: str = "/root/md-os",
+    limit: int = 50,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    """Run Codegraph deep analysis → hotspots for coding targets."""
+    require_permission(ctx.model_dump(), "approvals:read")
+    return codegraph_analyze(repo_path=repo_path, limit=limit)
+
+
+@app.get("/api/stack/multica")
+def stack_multica_agents(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    """Multica agent snapshot — status, runtime, provider."""
+    require_permission(ctx.model_dump(), "agents:read")
+    return multica_agent_snapshot()
 
 
 @app.post("/api/auth/dev-token")
@@ -1261,3 +1373,537 @@ def get_customer_health_api(
 def support_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
     require_permission(ctx.model_dump(), "support:read")
     return get_support_summary(ctx.company_id)
+
+
+# ── Finance API ───────────────────────────────────────────────────────────────────
+
+@app.post("/api/finance/invoices", status_code=201)
+def create_invoice_api(
+    payload: InvoiceCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_invoice(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "invoice", item["id"], None, item)
+    return item
+
+
+@app.get("/api/finance/invoices")
+def list_invoices_api(
+    status: str | None = None,
+    customer_id: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "finance:read")
+    return list_invoices(ctx.company_id, status=status, customer_id=customer_id)
+
+
+@app.get("/api/finance/invoices/{invoice_id}")
+def get_invoice_api(
+    invoice_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:read")
+    item = get_invoice(invoice_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/finance/invoices/{invoice_id}")
+def update_invoice_api(
+    invoice_id: str,
+    status: str | None = None,
+    due_date: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    item = get_invoice(invoice_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_invoice(invoice_id, {k: v for k, v in {"status": status, "due_date": due_date}.items() if v is not None})
+    log_audit(item["company_id"], ctx.actor_id, "update", "invoice", invoice_id, before, updated)
+    return updated
+
+
+@app.post("/api/finance/payments", status_code=201)
+def create_payment_api(
+    payload: PaymentCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    invoice = get_invoice(payload.invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, invoice.get("company_id"))
+    item = create_payment(payload.model_dump())
+    log_audit(invoice["company_id"], ctx.actor_id, "create", "payment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/finance/invoices/{invoice_id}/payments")
+def list_invoice_payments_api(
+    invoice_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "finance:read")
+    invoice = get_invoice(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, invoice.get("company_id"))
+    return list_payments_for_invoice(invoice_id)
+
+
+@app.get("/api/finance/summary/aging")
+def get_aging_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:read")
+    return get_invoices_aging_summary(ctx.company_id)
+
+
+# ── Inventory API ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/inventory/skus", status_code=201)
+def create_sku_api(
+    payload: SKUCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_sku(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "sku", item["id"], None, item)
+    return item
+
+
+@app.get("/api/inventory/skus")
+def list_skus_api(
+    category: str | None = None,
+    status: str | None = None,
+    low_stock_only: bool = False,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    return list_skus(ctx.company_id, category=category, status=status, low_stock_only=low_stock_only)
+
+
+@app.get("/api/inventory/skus/{sku_id}")
+def get_sku_api(
+    sku_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    item = get_sku(sku_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/inventory/skus/{sku_id}")
+def update_sku_api(
+    sku_id: str,
+    name: str | None = None,
+    reorder_point: int | None = None,
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    item = get_sku(sku_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_sku(sku_id, {
+        k: v for k, v in {"name": name, "reorder_point": reorder_point, "status": status}.items()
+        if v is not None
+    })
+    log_audit(item["company_id"], ctx.actor_id, "update", "sku", sku_id, before, updated)
+    return updated
+
+
+@app.post("/api/inventory/movements", status_code=201)
+def create_stock_movement_api(
+    payload: StockMovementCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    sku = get_sku(payload.sku_id)
+    if sku is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, sku.get("company_id"))
+    try:
+        item = create_stock_movement(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_audit(sku["company_id"], ctx.actor_id, "create", "stock_movement", item["id"], None, item)
+    return item
+
+
+@app.get("/api/inventory/summary")
+def inventory_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    return get_inventory_summary(ctx.company_id)
+
+
+# ── API Connector Hub Routes ────────────────────────────────────────────────────────
+
+@app.post("/api/integrations/credentials", status_code=201)
+def create_credential_api(
+    payload: ApiCredentialCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_api_credential(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "api_credential", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/credentials")
+def list_credentials_api(
+    provider: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_api_credentials(ctx.company_id, provider=provider)
+
+
+@app.get("/api/integrations/credentials/{cred_id}")
+def get_credential_api(
+    cred_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    item = get_api_credential(cred_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.delete("/api/integrations/credentials/{cred_id}")
+def delete_credential_api(
+    cred_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, str]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    item = get_api_credential(cred_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    _company_allowed(ctx, item.get("company_id"))
+    delete_api_credential(cred_id)
+    log_audit(item["company_id"], ctx.actor_id, "delete", "api_credential", cred_id, item, None)
+    return {"status": "deleted"}
+
+
+@app.post("/api/integrations/webhooks", status_code=201)
+def create_webhook_api(
+    payload: WebhookConfigCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_webhook_config(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "webhook_config", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/webhooks")
+def list_webhooks_api(ctx: AuthContext = Depends(get_auth_context)) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_webhook_configs(ctx.company_id)
+
+
+@app.get("/api/integrations/webhooks/{webhook_id}")
+def get_webhook_api(
+    webhook_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    item = get_webhook_config(webhook_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="webhook not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.delete("/api/integrations/webhooks/{webhook_id}")
+def delete_webhook_api(
+    webhook_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, str]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    item = get_webhook_config(webhook_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="webhook not found")
+    _company_allowed(ctx, item.get("company_id"))
+    delete_webhook_config(webhook_id)
+    log_audit(item["company_id"], ctx.actor_id, "delete", "webhook_config", webhook_id, item, None)
+    return {"status": "deleted"}
+
+
+@app.post("/api/integrations/logs", status_code=201)
+def create_integration_log_api(
+    payload: ApiLogCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = log_api_call(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "api_log", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/logs")
+def list_integration_logs_api(
+    connector_id: str | None = None,
+    limit: int = 100,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_api_logs(ctx.company_id, connector_id=connector_id, limit=limit)
+
+
+@app.get("/api/integrations/health")
+def connector_health_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return get_connector_health(ctx.company_id)
+
+# ── HR Routes ────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/hr/employees", status_code=201)
+def create_employee_api(
+    payload: EmployeeCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_employee(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "employee", item["id"], None, item)
+    return item
+
+
+@app.get("/api/hr/employees")
+def list_employees_api(
+    status: str | None = None,
+    department: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return list_employees(ctx.company_id, status=status, department=department)
+
+
+@app.get("/api/hr/employees/{emp_id}")
+def get_employee_api(
+    emp_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    item = get_employee(emp_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="employee not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/hr/employees/{emp_id}")
+def update_employee_api(
+    emp_id: str,
+    status: str | None = None,
+    department: str | None = None,
+    role: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    item = get_employee(emp_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="employee not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_employee(emp_id, {k: v for k, v in {"status": status, "department": department, "role": role}.items() if v is not None})
+    log_audit(item["company_id"], ctx.actor_id, "update", "employee", emp_id, before, updated)
+    return updated
+
+
+@app.get("/api/hr/summary")
+def hr_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return get_hr_summary(ctx.company_id)
+
+
+# ── Recruitment Routes ─────────────────────────────────────────────────────
+
+@app.post("/api/hr/recruitment", status_code=201)
+def create_recruitment_api(
+    payload: RecruitmentPipelineCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_recruitment(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "recruitment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/hr/recruitment")
+def list_recruitment_api(
+    stage: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "hr:read")
+    return list_recruitments(ctx.company_id, stage=stage)
+
+
+@app.get("/api/hr/recruitment/{rec_id}")
+def get_recruitment_api(
+    rec_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:read")
+    item = get_recruitment(rec_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/hr/recruitment/{rec_id}/stage")
+def promote_recruitment_api(
+    rec_id: str,
+    stage: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "hr:write")
+    item = get_recruitment(rec_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_recruitment(rec_id, stage)
+    log_audit(item["company_id"], ctx.actor_id, "update", "recruitment", rec_id, before, updated)
+    return updated
+
+
+# ── Logistics Routes ───────────────────────────────────────────────────────
+
+@app.post("/api/logistics/vehicles", status_code=201)
+def create_vehicle_api(
+    payload: VehicleCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_vehicle(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "vehicle", item["id"], None, item)
+    return item
+
+
+@app.get("/api/logistics/vehicles")
+def list_vehicles_api(
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return list_vehicles(ctx.company_id, status=status)
+
+
+@app.get("/api/logistics/vehicles/{veh_id}")
+def get_vehicle_api(
+    veh_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    item = get_vehicle(veh_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/logistics/vehicles/{veh_id}/status")
+def update_vehicle_status_api(
+    veh_id: str,
+    status: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    item = get_vehicle(veh_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_vehicle_status(veh_id, status)
+    log_audit(item["company_id"], ctx.actor_id, "update", "vehicle", veh_id, before, updated)
+    return updated
+
+
+@app.post("/api/logistics/shipments", status_code=201)
+def create_shipment_api(
+    payload: ShipmentCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_shipment(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "shipment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/logistics/shipments")
+def list_shipments_api(
+    status: str | None = None,
+    vehicle_id: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return list_shipments(ctx.company_id, status=status, vehicle_id=vehicle_id)
+
+
+@app.get("/api/logistics/shipments/{ship_id}")
+def get_shipment_api(
+    ship_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    item = get_shipment(ship_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="shipment not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/logistics/shipments/{ship_id}/status")
+def update_shipment_status_api(
+    ship_id: str,
+    status: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:write")
+    item = get_shipment(ship_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="shipment not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    from datetime import datetime, timezone
+    delivered = datetime.now(timezone.utc).isoformat() if status == "delivered" else None
+    updated = update_shipment_status(ship_id, status, delivered_at=delivered)
+    log_audit(item["company_id"], ctx.actor_id, "update", "shipment", ship_id, before, updated)
+    return updated
+
+
+@app.get("/api/logistics/summary")
+def logistics_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "logistics:read")
+    return get_logistics_summary(ctx.company_id)

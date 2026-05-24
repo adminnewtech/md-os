@@ -9,6 +9,12 @@ try:
     from models import (
         AgentRun, Approval, AuditLog, MemoryEntry, WorkflowRun,
         Contact, Lead, Deal, DealActivity,
+        Ticket, TicketNote, Macro, CustomerHealth,
+        Invoice, Payment,
+        SKU, StockMovement,
+        ApiCredential, WebhookConfig, ApiLog,
+        Employee, RecruitmentPipeline,
+        Vehicle, Shipment,
     )
     from store import store
 except ImportError:
@@ -17,6 +23,11 @@ except ImportError:
         AgentRun, Approval, AuditLog, MemoryEntry, WorkflowRun,
         Contact, Lead, Deal, DealActivity,
         Ticket, TicketNote, Macro, CustomerHealth,
+        Invoice, Payment,
+        SKU, StockMovement,
+        ApiCredential, WebhookConfig, ApiLog,
+        Employee, RecruitmentPipeline,
+        Vehicle, Shipment,
     )
     from .store import store
 
@@ -467,4 +478,399 @@ def get_support_summary(company_id: str) -> dict[str, Any]:
             "average_score": round(sum(h.get("health_score", 0) for h in health) / len(health), 2) if health else 0,
         },
         "macro_count": sum(1 for m in store.macros.values() if m.get("company_id") == company_id and m.get("is_active")),
+    }
+
+
+# ── Finance Services ──────────────────────────────────────────────────────────────
+
+def create_invoice(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Invoice(**payload).model_dump()
+    item["paid_amount"] = 0.0
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    item["updated_at"] = item["created_at"]
+    store.invoices[item["id"]] = item
+    return item
+
+
+def get_invoice(invoice_id: str) -> dict[str, Any] | None:
+    return store.invoices.get(invoice_id)
+
+
+def update_invoice(invoice_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    invoice = store.invoices.get(invoice_id)
+    if invoice is None:
+        return None
+    for key, value in payload.items():
+        if value is not None:
+            invoice[key] = value
+    from datetime import datetime, timezone
+    invoice["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return invoice
+
+
+def list_invoices(
+    company_id: str,
+    status: str | None = None,
+    customer_id: str | None = None,
+) -> list[dict[str, Any]]:
+    invoices = [inv for inv in store.invoices.values() if inv.get("company_id") == company_id]
+    if status is not None:
+        invoices = [inv for inv in invoices if inv.get("status") == status]
+    if customer_id is not None:
+        invoices = [inv for inv in invoices if inv.get("customer_id") == customer_id]
+    return invoices
+
+
+def get_invoices_aging_summary(company_id: str) -> dict[str, Any]:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    outstanding_invoices = [
+        inv for inv in store.invoices.values()
+        if inv.get("company_id") == company_id
+        and inv.get("status") in ("sent", "overdue")
+    ]
+    total_outstanding = sum(inv.get("total_amount", 0) for inv in outstanding_invoices)
+    return {
+        "company_id": company_id,
+        "total_outstanding": round(total_outstanding, 2),
+        "count": len(outstanding_invoices),
+    }
+
+
+def create_payment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Payment(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.payments[item["id"]] = item
+
+    # Update invoice paid_amount and check if fully paid
+    invoice = store.invoices.get(item["invoice_id"])
+    if invoice:
+        invoice["paid_amount"] = invoice.get("paid_amount", 0) + item["amount"]
+        if invoice["paid_amount"] >= invoice["total_amount"]:
+            invoice["status"] = "paid"
+        invoice["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    return item
+
+
+def list_payments_for_invoice(invoice_id: str) -> list[dict[str, Any]]:
+    return [p for p in store.payments.values() if p.get("invoice_id") == invoice_id]
+
+
+# ── Inventory Services ─────────────────────────────────────────────────────────────
+
+def create_sku(payload: dict[str, Any]) -> dict[str, Any]:
+    item = SKU(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["updated_at"] = datetime.now(timezone.utc).isoformat()
+    store.skus[item["id"]] = item
+    return item
+
+
+def get_sku(sku_id: str) -> dict[str, Any] | None:
+    return store.skus.get(sku_id)
+
+
+def update_sku(sku_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    sku = store.skus.get(sku_id)
+    if sku is None:
+        return None
+    for key, value in payload.items():
+        if value is not None:
+            sku[key] = value
+    from datetime import datetime, timezone
+    sku["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return sku
+
+
+def list_skus(
+    company_id: str,
+    category: str | None = None,
+    status: str | None = None,
+    low_stock_only: bool = False,
+) -> list[dict[str, Any]]:
+    skus = [s for s in store.skus.values() if s.get("company_id") == company_id]
+    if category is not None:
+        skus = [s for s in skus if s.get("category") == category]
+    if status is not None:
+        skus = [s for s in skus if s.get("status") == status]
+    if low_stock_only:
+        skus = [s for s in skus if s.get("quantity_on_hand", 0) <= s.get("reorder_point", 0)]
+    return skus
+
+
+def create_stock_movement(payload: dict[str, Any]) -> dict[str, Any]:
+    movement = StockMovement(**payload).model_dump()
+    from datetime import datetime, timezone
+    movement["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.stock_movements[movement["id"]] = movement
+
+    sku = store.skus.get(movement["sku_id"])
+    if sku is None:
+        raise ValueError("SKU not found")
+
+    qty = movement["quantity"]
+    if movement["movement_type"] == "in":
+        sku["quantity_on_hand"] = sku.get("quantity_on_hand", 0) + qty
+    elif movement["movement_type"] == "out":
+        if sku.get("quantity_on_hand", 0) < qty:
+            raise ValueError("insufficient stock")
+        sku["quantity_on_hand"] = sku.get("quantity_on_hand", 0) - qty
+    elif movement["movement_type"] == "adjustment":
+        sku["quantity_on_hand"] = qty
+
+    sku["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return movement
+
+
+def get_inventory_summary(company_id: str) -> dict[str, Any]:
+    skus = [s for s in store.skus.values() if s.get("company_id") == company_id]
+    low_stock = [s for s in skus if s.get("quantity_on_hand", 0) <= s.get("reorder_point", 0)]
+    return {
+        "company_id": company_id,
+        "total_skus": len(skus),
+        "low_stock_count": len(low_stock),
+        "low_stock_skus": [{"sku_code": s["sku_code"], "name": s["name"], "quantity_on_hand": s["quantity_on_hand"]} for s in low_stock],
+        "total_quantity_on_hand": sum(s.get("quantity_on_hand", 0) for s in skus),
+    }
+
+
+# ── API Connector Services ────────────────────────────────────────────────────
+
+def create_api_credential(payload: dict[str, Any]) -> dict[str, Any]:
+    item = ApiCredential(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.api_credentials[item["id"]] = item
+    return item
+
+
+def get_api_credential(cred_id: str) -> dict[str, Any] | None:
+    return store.api_credentials.get(cred_id)
+
+
+def list_api_credentials(company_id: str, provider: str | None = None) -> list[dict[str, Any]]:
+    creds = [c for c in store.api_credentials.values() if c.get("company_id") == company_id]
+    if provider:
+        creds = [c for c in creds if c.get("provider") == provider]
+    return creds
+
+
+def delete_api_credential(cred_id: str) -> bool:
+    if cred_id in store.api_credentials:
+        del store.api_credentials[cred_id]
+        return True
+    return False
+
+
+def create_webhook_config(payload: dict[str, Any]) -> dict[str, Any]:
+    item = WebhookConfig(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.webhook_configs[item["id"]] = item
+    return item
+
+
+def get_webhook_config(webhook_id: str) -> dict[str, Any] | None:
+    return store.webhook_configs.get(webhook_id)
+
+
+def list_webhook_configs(company_id: str) -> list[dict[str, Any]]:
+    return [w for w in store.webhook_configs.values() if w.get("company_id") == company_id]
+
+
+def delete_webhook_config(webhook_id: str) -> bool:
+    if webhook_id in store.webhook_configs:
+        del store.webhook_configs[webhook_id]
+        return True
+    return False
+
+
+def log_api_call(payload: dict[str, Any]) -> dict[str, Any]:
+    item = ApiLog(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["timestamp"] = datetime.now(timezone.utc).isoformat()
+    store.api_logs.append(item)
+    if len(store.api_logs) > 1000:
+        store.api_logs = store.api_logs[-1000:]
+    return item
+
+
+def list_api_logs(
+    company_id: str,
+    connector_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    logs = [l for l in store.api_logs if l.get("company_id") == company_id]
+    if connector_id:
+        logs = [l for l in logs if l.get("connector_id") == connector_id]
+    return logs[-limit:]
+
+
+def get_connector_health(company_id: str) -> dict[str, Any]:
+    credentials = list_api_credentials(company_id)
+    active = [c for c in credentials if c.get("is_active")]
+    logs = [l for l in store.api_logs if l.get("company_id") == company_id]
+    recent_failures = [l for l in logs[-100:] if int(l.get("status_code", 0)) >= 400]
+    return {
+        "company_id": company_id,
+        "total_connectors": len(credentials),
+        "active_connectors": len(active),
+        "providers": list(set(c.get("provider", "unknown") for c in active)),
+        "recent_log_count": len(logs[-100:]),
+        "recent_failure_count": len(recent_failures),
+    }
+
+
+# ── HR Services ───────────────────────────────────────────────────────────────────
+
+def create_employee(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Employee(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.employees[item["id"]] = item
+    return item
+
+
+def get_employee(emp_id: str) -> dict[str, Any] | None:
+    return store.employees.get(emp_id)
+
+
+def list_employees(company_id: str, status: str | None = None, department: str | None = None) -> list[dict[str, Any]]:
+    emps = [e for e in store.employees.values() if e.get("company_id") == company_id]
+    if status:
+        emps = [e for e in emps if e.get("status") == status]
+    if department:
+        emps = [e for e in emps if e.get("department") == department]
+    return emps
+
+
+def update_employee(emp_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    emp = store.employees.get(emp_id)
+    if emp is None:
+        return None
+    for k, v in payload.items():
+        if v is not None:
+            emp[k] = v
+    from datetime import datetime, timezone
+    emp["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return emp
+
+
+def create_recruitment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = RecruitmentPipeline(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.recruitment_pipeline[item["id"]] = item
+    return item
+
+
+def get_recruitment(rec_id: str) -> dict[str, Any] | None:
+    return store.recruitment_pipeline.get(rec_id)
+
+
+def list_recruitments(company_id: str, stage: str | None = None) -> list[dict[str, Any]]:
+    recs = [r for r in store.recruitment_pipeline.values() if r.get("company_id") == company_id]
+    if stage:
+        recs = [r for r in recs if r.get("stage") == stage]
+    return recs
+
+
+def update_recruitment(rec_id: str, stage: str) -> dict[str, Any] | None:
+    rec = store.recruitment_pipeline.get(rec_id)
+    if rec is None:
+        return None
+    rec["stage"] = stage
+    return rec
+
+
+# ── Logistics Services ───────────────────────────────────────────────────────────
+
+def create_vehicle(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Vehicle(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.vehicles[item["id"]] = item
+    return item
+
+
+def get_vehicle(veh_id: str) -> dict[str, Any] | None:
+    return store.vehicles.get(veh_id)
+
+
+def list_vehicles(company_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    vehs = [v for v in store.vehicles.values() if v.get("company_id") == company_id]
+    if status:
+        vehs = [v for v in vehs if v.get("status") == status]
+    return vehs
+
+
+def update_vehicle_status(veh_id: str, status: str) -> dict[str, Any] | None:
+    veh = store.vehicles.get(veh_id)
+    if veh is None:
+        return None
+    veh["status"] = status
+    return veh
+
+
+def create_shipment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Shipment(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.shipments[item["id"]] = item
+    return item
+
+
+def get_shipment(ship_id: str) -> dict[str, Any] | None:
+    return store.shipments.get(ship_id)
+
+
+def list_shipments(company_id: str, status: str | None = None, vehicle_id: str | None = None) -> list[dict[str, Any]]:
+    ships = [s for s in store.shipments.values() if s.get("company_id") == company_id]
+    if status:
+        ships = [s for s in ships if s.get("status") == status]
+    if vehicle_id:
+        ships = [s for s in ships if s.get("vehicle_id") == vehicle_id]
+    return ships
+
+
+def update_shipment_status(ship_id: str, status: str, delivered_at: str | None = None) -> dict[str, Any] | None:
+    ship = store.shipments.get(ship_id)
+    if ship is None:
+        return None
+    ship["status"] = status
+    if status == "delivered" and delivered_at:
+        ship["actual_delivery"] = delivered_at
+    return ship
+
+
+def get_logistics_summary(company_id: str) -> dict[str, Any]:
+    vehicles = list_vehicles(company_id)
+    available = [v for v in vehicles if v.get("status") == "available"]
+    in_use = [v for v in vehicles if v.get("status") == "in_use"]
+    shipments = list_shipments(company_id)
+    in_transit = [s for s in shipments if s.get("status") == "in_transit"]
+    return {
+        "company_id": company_id,
+        "total_vehicles": len(vehicles),
+        "available_vehicles": len(available),
+        "vehicles_in_use": len(in_use),
+        "total_shipments": len(shipments),
+        "shipments_in_transit": len(in_transit),
+    }
+
+
+def get_hr_summary(company_id: str) -> dict[str, Any]:
+    employees = list_employees(company_id)
+    active = [e for e in employees if e.get("status") == "active"]
+    recruiting = list_recruitments(company_id)
+    open_positions = [r for r in recruiting if r.get("stage") in ("applied", "screening", "interview")]
+    return {
+        "company_id": company_id,
+        "total_employees": len(employees),
+        "active_employees": len(active),
+        "recruiting_candidates": len(recruiting),
+        "open_positions": len(open_positions),
     }
