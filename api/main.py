@@ -7,9 +7,10 @@ from pydantic import BaseModel, Field
 
 import yaml
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .bootstrap import bootstrap_seed_data
+from .bootstrap import bootstrap_full
 from .auth import AuthContext, create_access_token, get_auth_context
 from .db import init_db
 from .models import (
@@ -161,13 +162,20 @@ from .store import store
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_info = init_db()
-    bootstrap_seed_data()
+    bootstrap_full()
     app.state.db = db_info
     yield
 
 
 app = FastAPI(title="MD-OS API", version="0.1.0", lifespan=lifespan)
-bootstrap_seed_data()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https://.*\.83-171-249-32\.nip\.io",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+bootstrap_full()
 T = TypeVar("T", bound=BaseModel)
 
 
