@@ -1,0 +1,30 @@
+{
+  "id": "wf-daily-standup",
+  "name": "Daily Standup",
+  "trigger": {
+    "type": "cron",
+    "schedule": "0 9 * * 1-5"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "agent": "orchestrator",
+      "action": "collect_team_status"
+    },
+    {
+      "id": "2",
+      "agent": "orchestrator",
+      "action": "aggregate_blockers"
+    },
+    {
+      "id": "3",
+      "agent": "orchestrator",
+      "action": "generate_standup_report"
+    },
+    {
+      "id": "4",
+      "agent": "orchestrator",
+      "action": "notify_team_escalate_blockers"
+    }
+  ]
+}

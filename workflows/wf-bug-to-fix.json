@@ -1,0 +1,58 @@
+{
+  "id": "wf-bug-to-fix",
+  "name": "Bug-to-Fix",
+  "trigger": {
+    "type": "event",
+    "source": "support_or_monitoring",
+    "event": "bug_reported"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "agent": "qa",
+      "action": "triage_confirm_reproduce_assign_severity"
+    },
+    {
+      "id": "2",
+      "agent": "dev",
+      "action": "fix_backend_or_frontend"
+    },
+    {
+      "id": "3",
+      "condition": "security_bug",
+      "true": "4",
+      "false": "5"
+    },
+    {
+      "id": "4",
+      "agent": "security",
+      "action": "review_fix"
+    },
+    {
+      "id": "5",
+      "agent": "qa",
+      "action": "verify_fix_regression_test"
+    },
+    {
+      "id": "6",
+      "condition": "severity in [P0,P1]",
+      "true": "7",
+      "false": "8"
+    },
+    {
+      "id": "7",
+      "agent": "cto",
+      "action": "approve"
+    },
+    {
+      "id": "8",
+      "agent": "devops",
+      "action": "deploy"
+    },
+    {
+      "id": "9",
+      "agent": "support",
+      "action": "notify_customer"
+    }
+  ]
+}

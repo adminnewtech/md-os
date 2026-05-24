@@ -1,0 +1,77 @@
+{
+  "title": "Foundation — DB, API, Auth, Paperclip Shell",
+  "tasks": [
+    {
+      "id": "p1-01",
+      "title": "Create PostgreSQL DB with pgvector and run migrations",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p1-02",
+      "title": "Build auth: JWT + workspace-scoped RBAC middleware",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p1-03",
+      "title": "Build approval guard middleware (destructive/financial/production/customer-data/secret)",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p1-04",
+      "title": "Build audit log middleware (every mutation logged)",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p1-05",
+      "title": "Seed default company: MD Platform (NewTech Kuwait)",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p1-06",
+      "title": "Import 25 agent definitions into agents table",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p1-07",
+      "title": "Import 6 workflow JSON files into workflows table",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p1-08",
+      "title": "Build /api/agents CRUD + /api/agent-teams",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p1-09",
+      "title": "Build /api/workflows/:id/run + workflow_runs table",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p1-10",
+      "title": "Build Paperclip dashboard shell (RTL Arabic, sidebar, company switcher)",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p1-11",
+      "title": "Build Agent Studio page (create/edit/view agents)",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p1-12",
+      "title": "Build Workflow Studio page (visual graph view + trigger config)",
+      "priority": "P2",
+      "status": "todo"
+    }
+  ]
+}

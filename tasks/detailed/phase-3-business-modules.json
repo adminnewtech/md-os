@@ -1,0 +1,65 @@
+{
+  "title": "Business Modules — CRM, Finance, Inventory, HR, Support, Logistics",
+  "tasks": [
+    {
+      "id": "p3-01",
+      "title": "CRM: contacts, leads, deals, pipeline, follow-up automation",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p3-02",
+      "title": "Support: tickets, SLA, macros, customer health, escalation",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p3-03",
+      "title": "Finance: invoices, expenses, budgets, cashflow, CFO report",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p3-04",
+      "title": "Inventory: SKU, stock levels, reorder alerts, supplier management",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p3-05",
+      "title": "HR: employees, recruitment pipeline, onboarding, policies",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p3-06",
+      "title": "Logistics: shipments, vehicles, routes, vendor management",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p3-07",
+      "title": "Sales: quotes, proposals, deal desk, approval workflows",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p3-08",
+      "title": "Marketing: campaigns, content calendar, social, analytics",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p3-09",
+      "title": "API Connector Hub: auth, health checks, webhook logs",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p3-10",
+      "title": "Connector integrations: Telegram, GitHub, Paperclip, Hermes Gateway, Zoho",
+      "priority": "P1",
+      "status": "todo"
+    }
+  ]
+}

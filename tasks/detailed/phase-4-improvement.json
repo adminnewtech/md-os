@@ -1,0 +1,53 @@
+{
+  "title": "Improvement Engine — Failure Classification, Backlog, Experimentation",
+  "tasks": [
+    {
+      "id": "p4-01",
+      "title": "Failure capture: classify root cause per failed agent run",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p4-02",
+      "title": "Improvement backlog: auto-generate backlog item from failure",
+      "priority": "P1",
+      "status": "todo"
+    },
+    {
+      "id": "p4-03",
+      "title": "Skill/prompt/workflow patch proposer (low-risk → auto, high-risk → approval)",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p4-04",
+      "title": "Before/after metrics tracking per agent skill change",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p4-05",
+      "title": "Agent performance scoring dashboard",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p4-06",
+      "title": "Automated postmortem generator from failure timeline",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p4-07",
+      "title": "Cost tracking per agent/run/model via 9Router",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p4-08",
+      "title": "Prompt versioning and A/B testing framework",
+      "priority": "P3",
+      "status": "todo"
+    }
+  ]
+}

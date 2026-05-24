@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MD-OS Agent Definition",
+  "type": "object",
+  "required": [
+    "name",
+    "role",
+    "mission",
+    "inputs",
+    "outputs",
+    "tools",
+    "skills",
+    "limits",
+    "escalation_rules",
+    "success_criteria",
+    "prompt_template"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 2
+    },
+    "version": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "mission": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "outputs": {
+      "type": "object"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limits": {
+      "type": "object"
+    },
+    "escalation_rules": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "success_criteria": {
+      "type": "object"
+    },
+    "prompt_template": {
+      "type": "string",
+      "minLength": 20
+    },
+    "escalation_matrix": {
+      "type": "object"
+    }
+  }
+}

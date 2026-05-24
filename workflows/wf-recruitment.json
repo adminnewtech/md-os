@@ -1,0 +1,63 @@
+{
+  "id": "wf-recruitment",
+  "name": "Recruitment",
+  "trigger": {
+    "type": "manual",
+    "source": "ceo",
+    "action": "approve_job_req"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "agent": "hr",
+      "action": "create_jd_post_job_boards"
+    },
+    {
+      "id": "2",
+      "agent": "research",
+      "action": "source_candidates"
+    },
+    {
+      "id": "3",
+      "agent": "hr",
+      "action": "screen_cvs_schedule_interviews"
+    },
+    {
+      "id": "4",
+      "agent": "department_head",
+      "action": "interview_score"
+    },
+    {
+      "id": "5",
+      "agent": "hr",
+      "action": "collect_feedback_make_offer"
+    },
+    {
+      "id": "6",
+      "condition": "compensation > 10000",
+      "true": "7",
+      "false": "8"
+    },
+    {
+      "id": "7",
+      "agent": "cfo",
+      "action": "approve_compensation"
+    },
+    {
+      "id": "8",
+      "condition": "compensation > 20000",
+      "true": "9",
+      "false": "10"
+    },
+    {
+      "id": "9",
+      "agent": "ceo",
+      "action": "final_approval"
+    },
+    {
+      "id": "10",
+      "agent": "hr",
+      "action": "send_offer_onboarding_checklist"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "wf-emergency-escalation",
+  "name": "Emergency Escalation",
+  "trigger": {
+    "type": "event",
+    "source": "monitoring",
+    "event": "critical_alert"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "agent": "devops",
+      "action": "acknowledge_alert"
+    },
+    {
+      "id": "2",
+      "agent": "devops",
+      "action": "assess_impact"
+    },
+    {
+      "id": "3",
+      "condition": "is_critical",
+      "true": "4",
+      "false": "5"
+    },
+    {
+      "id": "4",
+      "agent": "orchestrator",
+      "action": "page_oncall_ceo_cto"
+    },
+    {
+      "id": "5",
+      "agent": "devops",
+      "action": "begin_fix"
+    },
+    {
+      "id": "6",
+      "agent": "devops",
+      "action": "deploy_fix"
+    },
+    {
+      "id": "7",
+      "agent": "qa",
+      "action": "verify_resolution"
+    },
+    {
+      "id": "8",
+      "agent": "devops",
+      "action": "post_mortem"
+    }
+  ]
+}

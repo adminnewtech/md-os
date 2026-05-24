@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: md-os-postgres
+    environment:
+      POSTGRES_DB: md_os
+      POSTGRES_USER: md_os
+      POSTGRES_PASSWORD: md_os_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - md_os_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U md_os -d md_os"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  md_os_postgres_data:

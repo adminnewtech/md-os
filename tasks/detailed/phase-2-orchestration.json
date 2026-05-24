@@ -1,0 +1,65 @@
+{
+  "title": "Orchestration — Agent Run Lifecycle, Memory, Approval Interrupt",
+  "tasks": [
+    {
+      "id": "p2-01",
+      "title": "Hermes Orchestrator service: plan → delegate → monitor → report",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p2-02",
+      "title": "Agent run state machine: queued/running/waiting_approval/done/failed",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p2-03",
+      "title": "Memory write/search adapter: GBrain/PGLite + vector (768 dims)",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p2-04",
+      "title": "Tool permission resolver per agent role",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p2-05",
+      "title": "Human approval interrupt mechanism (workflow pauses, resumes on approve)",
+      "priority": "P0",
+      "status": "done"
+    },
+    {
+      "id": "p2-06",
+      "title": "Build /api/approvals CRUD + decision endpoint",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p2-07",
+      "title": "Agent periodic report cycle (6h) via cron",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p2-08",
+      "title": "CEO daily synthesis report (9 AM Mon-Fri)",
+      "priority": "P1",
+      "status": "done"
+    },
+    {
+      "id": "p2-09",
+      "title": "Build Agent Teams page (org chart, run cycles, reports)",
+      "priority": "P2",
+      "status": "todo"
+    },
+    {
+      "id": "p2-10",
+      "title": "Build Task Engine page (Kanban, queues, SLA, automation rules)",
+      "priority": "P2",
+      "status": "todo"
+    }
+  ]
+}

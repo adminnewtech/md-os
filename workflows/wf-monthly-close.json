@@ -1,0 +1,40 @@
+{
+  "id": "wf-monthly-close",
+  "name": "Monthly Financial Close",
+  "trigger": {
+    "type": "cron",
+    "schedule": "0 8 1 * *"
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "agent": "finance",
+      "action": "collect_all_transactions"
+    },
+    {
+      "id": "2",
+      "agent": "finance",
+      "action": "reconcile_bank_statements"
+    },
+    {
+      "id": "3",
+      "agent": "finance",
+      "action": "generate_financial_statements"
+    },
+    {
+      "id": "4",
+      "agent": "cfo",
+      "action": "review_approve_statements"
+    },
+    {
+      "id": "5",
+      "agent": "finance",
+      "action": "prepare_tax_filing_if_applicable"
+    },
+    {
+      "id": "6",
+      "agent": "ceo",
+      "action": "board_report"
+    }
+  ]
+}
