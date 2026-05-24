@@ -10,6 +10,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .stack_orchestrator import (
+    get_full_status,
+    is_stack_healthy,
+    codegraph_analyze,
+    multica_agent_snapshot,
+)
 from .bootstrap import bootstrap_full
 from .auth import AuthContext, create_access_token, get_auth_context
 from .db import init_db
@@ -222,6 +228,41 @@ def _create(bucket: str, entity: str, model: T, ctx: AuthContext, permission: st
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="md-os-api")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stack Orchestrator Endpoints — full integration layer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/stack/status")
+def stack_status() -> dict[str, Any]:
+    """Full stack health + metrics from all 6 tools."""
+    return get_full_status()
+
+
+@app.get("/api/stack/health")
+def stack_health_simple() -> dict[str, Any]:
+    """Simple health check → True/False for monitoring."""
+    healthy = is_stack_healthy()
+    return {"healthy": healthy, "status": "ok" if healthy else "degraded"}
+
+
+@app.post("/api/stack/analyze")
+def stack_analyze(
+    repo_path: str = "/root/md-os",
+    limit: int = 50,
+    ctx: AuthContext = Depends(get_auth_context),
+) -> dict[str, Any]:
+    """Run Codegraph deep analysis → hotspots for coding targets."""
+    require_permission(ctx.model_dump(), "approvals:read")
+    return codegraph_analyze(repo_path=repo_path, limit=limit)
+
+
+@app.get("/api/stack/multica")
+def stack_multica_agents(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    """Multica agent snapshot — status, runtime, provider."""
+    require_permission(ctx.model_dump(), "agents:read")
+    return multica_agent_snapshot()
 
 
 @app.post("/api/auth/dev-token")
