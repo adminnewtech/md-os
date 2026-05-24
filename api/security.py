@@ -24,6 +24,12 @@ ROLE_PERMISSIONS = {
         "support:write",
         "crm:read",
         "crm:write",
+        "finance:read",
+        "finance:write",
+        "inventory:read",
+        "inventory:write",
+        "integrations:read",
+        "integrations:write",
     },
     "viewer": {
         "companies:read",

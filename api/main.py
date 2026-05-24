@@ -53,6 +53,10 @@ from .models import (
     # Inventory
     SKUCreate,
     StockMovementCreate,
+    # Integrations
+    ApiCredentialCreate,
+    WebhookConfigCreate,
+    ApiLogCreate,
 )
 from .security import approval_required, require_permission
 from .services import (
@@ -109,6 +113,18 @@ from .services import (
     list_skus,
     create_stock_movement,
     get_inventory_summary,
+    # Integration services
+    create_api_credential,
+    get_api_credential,
+    list_api_credentials,
+    delete_api_credential,
+    create_webhook_config,
+    get_webhook_config,
+    list_webhook_configs,
+    delete_webhook_config,
+    log_api_call,
+    list_api_logs,
+    get_connector_health,
 )
 from .orchestrator import create_cycle, get_cycle, list_cycles, run_cycle
 from .reporting import generate_agent_periodic_report, generate_ceo_daily_report
@@ -1457,3 +1473,131 @@ def create_stock_movement_api(
 def inventory_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
     require_permission(ctx.model_dump(), "inventory:read")
     return get_inventory_summary(ctx.company_id)
+
+
+# ── API Connector Hub Routes ────────────────────────────────────────────────────────
+
+@app.post("/api/integrations/credentials", status_code=201)
+def create_credential_api(
+    payload: ApiCredentialCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_api_credential(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "api_credential", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/credentials")
+def list_credentials_api(
+    provider: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_api_credentials(ctx.company_id, provider=provider)
+
+
+@app.get("/api/integrations/credentials/{cred_id}")
+def get_credential_api(
+    cred_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    item = get_api_credential(cred_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.delete("/api/integrations/credentials/{cred_id}")
+def delete_credential_api(
+    cred_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, str]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    item = get_api_credential(cred_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    _company_allowed(ctx, item.get("company_id"))
+    delete_api_credential(cred_id)
+    log_audit(item["company_id"], ctx.actor_id, "delete", "api_credential", cred_id, item, None)
+    return {"status": "deleted"}
+
+
+@app.post("/api/integrations/webhooks", status_code=201)
+def create_webhook_api(
+    payload: WebhookConfigCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_webhook_config(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "webhook_config", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/webhooks")
+def list_webhooks_api(ctx: AuthContext = Depends(get_auth_context)) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_webhook_configs(ctx.company_id)
+
+
+@app.get("/api/integrations/webhooks/{webhook_id}")
+def get_webhook_api(
+    webhook_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    item = get_webhook_config(webhook_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="webhook not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.delete("/api/integrations/webhooks/{webhook_id}")
+def delete_webhook_api(
+    webhook_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, str]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    item = get_webhook_config(webhook_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="webhook not found")
+    _company_allowed(ctx, item.get("company_id"))
+    delete_webhook_config(webhook_id)
+    log_audit(item["company_id"], ctx.actor_id, "delete", "webhook_config", webhook_id, item, None)
+    return {"status": "deleted"}
+
+
+@app.post("/api/integrations/logs", status_code=201)
+def create_integration_log_api(
+    payload: ApiLogCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = log_api_call(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "api_log", item["id"], None, item)
+    return item
+
+
+@app.get("/api/integrations/logs")
+def list_integration_logs_api(
+    connector_id: str | None = None,
+    limit: int = 100,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return list_api_logs(ctx.company_id, connector_id=connector_id, limit=limit)
+
+
+@app.get("/api/integrations/health")
+def connector_health_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "integrations:read")
+    return get_connector_health(ctx.company_id)

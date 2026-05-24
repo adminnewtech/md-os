@@ -426,3 +426,53 @@ class StockMovementCreate(ApiModel):
 class StockMovement(StockMovementCreate):
     id: str = Field(default_factory=lambda: str(uuid4()))
     created_at: str | None = None
+
+
+# ── API Connector Hub Models ──────────────────────────────────────────────────
+
+class ApiCredentialCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    provider: str  # telegram, github, zoho, stripe, paperclip, custom
+    auth_type: Literal["api_key", "oauth2", "bearer_token", "basic"] = "api_key"
+    credentials: dict[str, Any] = Field(default_factory=dict)  # store encrypted
+    base_url: str | None = None
+    is_active: bool = True
+
+
+class ApiCredential(ApiCredentialCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class WebhookConfigCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    name: str
+    target_url: str
+    events: list[str] = Field(default_factory=list)
+    secret: str | None = None
+    is_active: bool = True
+
+
+class WebhookConfig(WebhookConfigCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+class ApiLogCreate(ApiModel):
+    company_id: str
+    connector_id: str
+    direction: Literal["incoming", "outgoing"]
+    method: str
+    endpoint: str
+    status_code: int
+    duration_ms: int
+    request_body: str | None = None
+    response_body: str | None = None
+
+
+class ApiLog(ApiLogCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    timestamp: str | None = None

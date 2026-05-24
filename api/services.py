@@ -12,6 +12,7 @@ try:
         Ticket, TicketNote, Macro, CustomerHealth,
         Invoice, Payment,
         SKU, StockMovement,
+        ApiCredential, WebhookConfig, ApiLog,
     )
     from store import store
 except ImportError:
@@ -22,6 +23,7 @@ except ImportError:
         Ticket, TicketNote, Macro, CustomerHealth,
         Invoice, Payment,
         SKU, StockMovement,
+        ApiCredential, WebhookConfig, ApiLog,
     )
     from .store import store
 
@@ -628,4 +630,91 @@ def get_inventory_summary(company_id: str) -> dict[str, Any]:
         "low_stock_count": len(low_stock),
         "low_stock_skus": [{"sku_code": s["sku_code"], "name": s["name"], "quantity_on_hand": s["quantity_on_hand"]} for s in low_stock],
         "total_quantity_on_hand": sum(s.get("quantity_on_hand", 0) for s in skus),
+    }
+
+
+# ── API Connector Services ────────────────────────────────────────────────────
+
+def create_api_credential(payload: dict[str, Any]) -> dict[str, Any]:
+    item = ApiCredential(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.api_credentials[item["id"]] = item
+    return item
+
+
+def get_api_credential(cred_id: str) -> dict[str, Any] | None:
+    return store.api_credentials.get(cred_id)
+
+
+def list_api_credentials(company_id: str, provider: str | None = None) -> list[dict[str, Any]]:
+    creds = [c for c in store.api_credentials.values() if c.get("company_id") == company_id]
+    if provider:
+        creds = [c for c in creds if c.get("provider") == provider]
+    return creds
+
+
+def delete_api_credential(cred_id: str) -> bool:
+    if cred_id in store.api_credentials:
+        del store.api_credentials[cred_id]
+        return True
+    return False
+
+
+def create_webhook_config(payload: dict[str, Any]) -> dict[str, Any]:
+    item = WebhookConfig(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.webhook_configs[item["id"]] = item
+    return item
+
+
+def get_webhook_config(webhook_id: str) -> dict[str, Any] | None:
+    return store.webhook_configs.get(webhook_id)
+
+
+def list_webhook_configs(company_id: str) -> list[dict[str, Any]]:
+    return [w for w in store.webhook_configs.values() if w.get("company_id") == company_id]
+
+
+def delete_webhook_config(webhook_id: str) -> bool:
+    if webhook_id in store.webhook_configs:
+        del store.webhook_configs[webhook_id]
+        return True
+    return False
+
+
+def log_api_call(payload: dict[str, Any]) -> dict[str, Any]:
+    item = ApiLog(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["timestamp"] = datetime.now(timezone.utc).isoformat()
+    store.api_logs.append(item)
+    if len(store.api_logs) > 1000:
+        store.api_logs = store.api_logs[-1000:]
+    return item
+
+
+def list_api_logs(
+    company_id: str,
+    connector_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    logs = [l for l in store.api_logs if l.get("company_id") == company_id]
+    if connector_id:
+        logs = [l for l in logs if l.get("connector_id") == connector_id]
+    return logs[-limit:]
+
+
+def get_connector_health(company_id: str) -> dict[str, Any]:
+    credentials = list_api_credentials(company_id)
+    active = [c for c in credentials if c.get("is_active")]
+    logs = [l for l in store.api_logs if l.get("company_id") == company_id]
+    recent_failures = [l for l in logs[-100:] if int(l.get("status_code", 0)) >= 400]
+    return {
+        "company_id": company_id,
+        "total_connectors": len(credentials),
+        "active_connectors": len(active),
+        "providers": list(set(c.get("provider", "unknown") for c in active)),
+        "recent_log_count": len(logs[-100:]),
+        "recent_failure_count": len(recent_failures),
     }
