@@ -47,6 +47,12 @@ from .models import (
     TicketCreate,
     TicketUpdate,
     MacroCreate,
+    # Finance
+    InvoiceCreate,
+    PaymentCreate,
+    # Inventory
+    SKUCreate,
+    StockMovementCreate,
 )
 from .security import approval_required, require_permission
 from .services import (
@@ -88,6 +94,21 @@ from .services import (
     update_customer_health,
     get_customer_health,
     get_support_summary,
+    # Finance services
+    create_invoice,
+    get_invoice,
+    update_invoice,
+    list_invoices,
+    get_invoices_aging_summary,
+    create_payment,
+    list_payments_for_invoice,
+    # Inventory services
+    create_sku,
+    get_sku,
+    update_sku,
+    list_skus,
+    create_stock_movement,
+    get_inventory_summary,
 )
 from .orchestrator import create_cycle, get_cycle, list_cycles, run_cycle
 from .reporting import generate_agent_periodic_report, generate_ceo_daily_report
@@ -1261,3 +1282,178 @@ def get_customer_health_api(
 def support_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
     require_permission(ctx.model_dump(), "support:read")
     return get_support_summary(ctx.company_id)
+
+
+# ── Finance API ───────────────────────────────────────────────────────────────────
+
+@app.post("/api/finance/invoices", status_code=201)
+def create_invoice_api(
+    payload: InvoiceCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_invoice(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "invoice", item["id"], None, item)
+    return item
+
+
+@app.get("/api/finance/invoices")
+def list_invoices_api(
+    status: str | None = None,
+    customer_id: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "finance:read")
+    return list_invoices(ctx.company_id, status=status, customer_id=customer_id)
+
+
+@app.get("/api/finance/invoices/{invoice_id}")
+def get_invoice_api(
+    invoice_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:read")
+    item = get_invoice(invoice_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/finance/invoices/{invoice_id}")
+def update_invoice_api(
+    invoice_id: str,
+    status: str | None = None,
+    due_date: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    item = get_invoice(invoice_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_invoice(invoice_id, {k: v for k, v in {"status": status, "due_date": due_date}.items() if v is not None})
+    log_audit(item["company_id"], ctx.actor_id, "update", "invoice", invoice_id, before, updated)
+    return updated
+
+
+@app.post("/api/finance/payments", status_code=201)
+def create_payment_api(
+    payload: PaymentCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:write")
+    invoice = get_invoice(payload.invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, invoice.get("company_id"))
+    item = create_payment(payload.model_dump())
+    log_audit(invoice["company_id"], ctx.actor_id, "create", "payment", item["id"], None, item)
+    return item
+
+
+@app.get("/api/finance/invoices/{invoice_id}/payments")
+def list_invoice_payments_api(
+    invoice_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "finance:read")
+    invoice = get_invoice(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="invoice not found")
+    _company_allowed(ctx, invoice.get("company_id"))
+    return list_payments_for_invoice(invoice_id)
+
+
+@app.get("/api/finance/summary/aging")
+def get_aging_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "finance:read")
+    return get_invoices_aging_summary(ctx.company_id)
+
+
+# ── Inventory API ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/inventory/skus", status_code=201)
+def create_sku_api(
+    payload: SKUCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    data = payload.model_dump()
+    _company_allowed(ctx, data.get("company_id"))
+    item = create_sku(data)
+    log_audit(item["company_id"], ctx.actor_id, "create", "sku", item["id"], None, item)
+    return item
+
+
+@app.get("/api/inventory/skus")
+def list_skus_api(
+    category: str | None = None,
+    status: str | None = None,
+    low_stock_only: bool = False,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> list[dict[str, Any]]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    return list_skus(ctx.company_id, category=category, status=status, low_stock_only=low_stock_only)
+
+
+@app.get("/api/inventory/skus/{sku_id}")
+def get_sku_api(
+    sku_id: str,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    item = get_sku(sku_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, item.get("company_id"))
+    return item
+
+
+@app.patch("/api/inventory/skus/{sku_id}")
+def update_sku_api(
+    sku_id: str,
+    name: str | None = None,
+    reorder_point: int | None = None,
+    status: str | None = None,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    item = get_sku(sku_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, item.get("company_id"))
+    before = item.copy()
+    updated = update_sku(sku_id, {
+        k: v for k, v in {"name": name, "reorder_point": reorder_point, "status": status}.items()
+        if v is not None
+    })
+    log_audit(item["company_id"], ctx.actor_id, "update", "sku", sku_id, before, updated)
+    return updated
+
+
+@app.post("/api/inventory/movements", status_code=201)
+def create_stock_movement_api(
+    payload: StockMovementCreate,
+    ctx: AuthContext = Depends(get_auth_context)
+) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:write")
+    sku = get_sku(payload.sku_id)
+    if sku is None:
+        raise HTTPException(status_code=404, detail="sku not found")
+    _company_allowed(ctx, sku.get("company_id"))
+    try:
+        item = create_stock_movement(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_audit(sku["company_id"], ctx.actor_id, "create", "stock_movement", item["id"], None, item)
+    return item
+
+
+@app.get("/api/inventory/summary")
+def inventory_summary_api(ctx: AuthContext = Depends(get_auth_context)) -> dict[str, Any]:
+    require_permission(ctx.model_dump(), "inventory:read")
+    return get_inventory_summary(ctx.company_id)

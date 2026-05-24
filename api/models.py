@@ -337,3 +337,92 @@ class CustomerHealthCreate(ApiModel):
 class CustomerHealth(CustomerHealthCreate):
     id: str = Field(default_factory=lambda: str(uuid4()))
     updated_at: str | None = None
+
+
+# ── Finance Models ────────────────────────────────────────────────────────────────
+
+InvoiceStatus = Literal["draft", "sent", "paid", "overdue", "cancelled"]
+
+
+class LineItemCreate(ApiModel):
+    description: str
+    quantity: float = 1.0
+    unit_price: float = 0.0
+    total: float = 0.0
+
+
+class LineItem(LineItemCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+
+
+class InvoiceCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    invoice_number: str = ""
+    customer_id: str
+    customer_name: str | None = None
+    total_amount: float = 0.0
+    currency: str = "USD"
+    status: InvoiceStatus = "draft"
+    line_items: list[dict[str, Any]] = Field(default_factory=list)
+    due_date: str | None = None
+    notes: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class Invoice(InvoiceCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    paid_amount: float = 0.0
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class PaymentCreate(ApiModel):
+    company_id: str
+    invoice_id: str
+    amount: float
+    method: str = "bank_transfer"
+    reference: str | None = None
+    notes: str | None = None
+
+
+class Payment(PaymentCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None
+
+
+# ── Inventory Models ─────────────────────────────────────────────────────────────
+
+class SKUCreate(ApiModel):
+    company_id: str
+    workspace_id: str = "default"
+    sku_code: str = ""
+    name: str
+    description: str | None = None
+    category: str | None = None
+    quantity_on_hand: float = 0.0
+    unit: str = "unit"
+    reorder_point: float = 0.0
+    reorder_quantity: float = 0.0
+    unit_cost: float = 0.0
+    status: Literal["active", "inactive", "discontinued"] = "active"
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class SKU(SKUCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    updated_at: str | None = None
+
+
+class StockMovementCreate(ApiModel):
+    company_id: str
+    sku_id: str
+    movement_type: Literal["in", "out", "adjustment"]
+    quantity: float
+    reason: str | None = None
+    reference: str | None = None
+
+
+class StockMovement(StockMovementCreate):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    created_at: str | None = None

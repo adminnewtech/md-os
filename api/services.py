@@ -9,6 +9,9 @@ try:
     from models import (
         AgentRun, Approval, AuditLog, MemoryEntry, WorkflowRun,
         Contact, Lead, Deal, DealActivity,
+        Ticket, TicketNote, Macro, CustomerHealth,
+        Invoice, Payment,
+        SKU, StockMovement,
     )
     from store import store
 except ImportError:
@@ -17,6 +20,8 @@ except ImportError:
         AgentRun, Approval, AuditLog, MemoryEntry, WorkflowRun,
         Contact, Lead, Deal, DealActivity,
         Ticket, TicketNote, Macro, CustomerHealth,
+        Invoice, Payment,
+        SKU, StockMovement,
     )
     from .store import store
 
@@ -467,4 +472,160 @@ def get_support_summary(company_id: str) -> dict[str, Any]:
             "average_score": round(sum(h.get("health_score", 0) for h in health) / len(health), 2) if health else 0,
         },
         "macro_count": sum(1 for m in store.macros.values() if m.get("company_id") == company_id and m.get("is_active")),
+    }
+
+
+# ── Finance Services ──────────────────────────────────────────────────────────────
+
+def create_invoice(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Invoice(**payload).model_dump()
+    item["paid_amount"] = 0.0
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    item["updated_at"] = item["created_at"]
+    store.invoices[item["id"]] = item
+    return item
+
+
+def get_invoice(invoice_id: str) -> dict[str, Any] | None:
+    return store.invoices.get(invoice_id)
+
+
+def update_invoice(invoice_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    invoice = store.invoices.get(invoice_id)
+    if invoice is None:
+        return None
+    for key, value in payload.items():
+        if value is not None:
+            invoice[key] = value
+    from datetime import datetime, timezone
+    invoice["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return invoice
+
+
+def list_invoices(
+    company_id: str,
+    status: str | None = None,
+    customer_id: str | None = None,
+) -> list[dict[str, Any]]:
+    invoices = [inv for inv in store.invoices.values() if inv.get("company_id") == company_id]
+    if status is not None:
+        invoices = [inv for inv in invoices if inv.get("status") == status]
+    if customer_id is not None:
+        invoices = [inv for inv in invoices if inv.get("customer_id") == customer_id]
+    return invoices
+
+
+def get_invoices_aging_summary(company_id: str) -> dict[str, Any]:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    outstanding_invoices = [
+        inv for inv in store.invoices.values()
+        if inv.get("company_id") == company_id
+        and inv.get("status") in ("sent", "overdue")
+    ]
+    total_outstanding = sum(inv.get("total_amount", 0) for inv in outstanding_invoices)
+    return {
+        "company_id": company_id,
+        "total_outstanding": round(total_outstanding, 2),
+        "count": len(outstanding_invoices),
+    }
+
+
+def create_payment(payload: dict[str, Any]) -> dict[str, Any]:
+    item = Payment(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.payments[item["id"]] = item
+
+    # Update invoice paid_amount and check if fully paid
+    invoice = store.invoices.get(item["invoice_id"])
+    if invoice:
+        invoice["paid_amount"] = invoice.get("paid_amount", 0) + item["amount"]
+        if invoice["paid_amount"] >= invoice["total_amount"]:
+            invoice["status"] = "paid"
+        invoice["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    return item
+
+
+def list_payments_for_invoice(invoice_id: str) -> list[dict[str, Any]]:
+    return [p for p in store.payments.values() if p.get("invoice_id") == invoice_id]
+
+
+# ── Inventory Services ─────────────────────────────────────────────────────────────
+
+def create_sku(payload: dict[str, Any]) -> dict[str, Any]:
+    item = SKU(**payload).model_dump()
+    from datetime import datetime, timezone
+    item["updated_at"] = datetime.now(timezone.utc).isoformat()
+    store.skus[item["id"]] = item
+    return item
+
+
+def get_sku(sku_id: str) -> dict[str, Any] | None:
+    return store.skus.get(sku_id)
+
+
+def update_sku(sku_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    sku = store.skus.get(sku_id)
+    if sku is None:
+        return None
+    for key, value in payload.items():
+        if value is not None:
+            sku[key] = value
+    from datetime import datetime, timezone
+    sku["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return sku
+
+
+def list_skus(
+    company_id: str,
+    category: str | None = None,
+    status: str | None = None,
+    low_stock_only: bool = False,
+) -> list[dict[str, Any]]:
+    skus = [s for s in store.skus.values() if s.get("company_id") == company_id]
+    if category is not None:
+        skus = [s for s in skus if s.get("category") == category]
+    if status is not None:
+        skus = [s for s in skus if s.get("status") == status]
+    if low_stock_only:
+        skus = [s for s in skus if s.get("quantity_on_hand", 0) <= s.get("reorder_point", 0)]
+    return skus
+
+
+def create_stock_movement(payload: dict[str, Any]) -> dict[str, Any]:
+    movement = StockMovement(**payload).model_dump()
+    from datetime import datetime, timezone
+    movement["created_at"] = datetime.now(timezone.utc).isoformat()
+    store.stock_movements[movement["id"]] = movement
+
+    sku = store.skus.get(movement["sku_id"])
+    if sku is None:
+        raise ValueError("SKU not found")
+
+    qty = movement["quantity"]
+    if movement["movement_type"] == "in":
+        sku["quantity_on_hand"] = sku.get("quantity_on_hand", 0) + qty
+    elif movement["movement_type"] == "out":
+        if sku.get("quantity_on_hand", 0) < qty:
+            raise ValueError("insufficient stock")
+        sku["quantity_on_hand"] = sku.get("quantity_on_hand", 0) - qty
+    elif movement["movement_type"] == "adjustment":
+        sku["quantity_on_hand"] = qty
+
+    sku["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return movement
+
+
+def get_inventory_summary(company_id: str) -> dict[str, Any]:
+    skus = [s for s in store.skus.values() if s.get("company_id") == company_id]
+    low_stock = [s for s in skus if s.get("quantity_on_hand", 0) <= s.get("reorder_point", 0)]
+    return {
+        "company_id": company_id,
+        "total_skus": len(skus),
+        "low_stock_count": len(low_stock),
+        "low_stock_skus": [{"sku_code": s["sku_code"], "name": s["name"], "quantity_on_hand": s["quantity_on_hand"]} for s in low_stock],
+        "total_quantity_on_hand": sum(s.get("quantity_on_hand", 0) for s in skus),
     }

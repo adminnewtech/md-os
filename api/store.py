@@ -26,6 +26,10 @@ class InMemoryStore:
         self.ticket_notes: dict[str, dict[str, Any]] = {}
         self.macros: dict[str, dict[str, Any]] = {}
         self.customer_health: dict[str, dict[str, Any]] = {}
+        self.invoices: dict[str, dict[str, Any]] = {}
+        self.payments: dict[str, dict[str, Any]] = {}
+        self.skus: dict[str, dict[str, Any]] = {}
+        self.stock_movements: dict[str, dict[str, Any]] = {}
 
     def bucket(self, name: str) -> MutableMapping[str, dict[str, Any]]:
         return getattr(self, name)
