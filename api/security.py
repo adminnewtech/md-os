@@ -34,6 +34,8 @@ ROLE_PERMISSIONS = {
         "hr:write",
         "logistics:read",
         "logistics:write",
+        "sales:read",
+        "sales:write",
     },
     "viewer": {
         "companies:read",

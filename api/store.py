@@ -37,6 +37,9 @@ class InMemoryStore:
         self.recruitment_pipeline: dict[str, dict[str, Any]] = {}
         self.vehicles: dict[str, dict[str, Any]] = {}
         self.shipments: dict[str, dict[str, Any]] = {}
+        self.quotes: dict[str, dict[str, Any]] = {}
+        self.proposals: dict[str, dict[str, Any]] = {}
+        self.deal_desks: dict[str, dict[str, Any]] = {}
 
     def reset(self) -> None:
         self.companies.clear()
@@ -70,6 +73,9 @@ class InMemoryStore:
         self.recruitment_pipeline.clear()
         self.vehicles.clear()
         self.shipments.clear()
+        self.quotes.clear()
+        self.proposals.clear()
+        self.deal_desks.clear()
 
     def bucket(self, name: str) -> MutableMapping[str, dict[str, Any]]:
         return getattr(self, name)
